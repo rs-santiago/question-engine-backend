@@ -2,10 +2,11 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
-  UnauthorizedException,
-  ForbiddenException,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { validate as validateUuid } from 'uuid'; // Importa o validador
 
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -13,32 +14,37 @@ export class TenantGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
+    const tenantId = request.headers['x-tenant-id'];
 
-    // 1. Extrai o ID do tenant via Header x-tenant-id ou JWT
-    const tenantId = request.headers['x-tenant-id'] || request.user?.tenantId;
-
+    // 1. Verifica se o header existe
     if (!tenantId) {
-      throw new UnauthorizedException(
-        'Identificador de Tenant B2B não fornecido na requisição.',
-      );
+      throw new BadRequestException('O header "x-tenant-id" é obrigatório.');
     }
 
-    // 2. Consulta o status do Tenant no PostgreSQL
+    // 2. Valida se o formato do UUID é legítimo antes de consultar o banco
+    if (!validateUuid(tenantId)) {
+      // Se não for um UUID válido, lançamos um erro 400 amigável
+      // Isso impede que a consulta findUnique() abaixo falhe com o erro do Prisma
+      throw new BadRequestException('O formato do "x-tenant-id" fornecido é inválido (deve ser um UUID).');
+    }
+
+    // 3. Consulta o status do Tenant no PostgreSQL
+    // Agora esta consulta está segura contra erros de formato de UUID
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { id: true, status: true },
     });
 
+    // 4. Valida se o Tenant existe
     if (!tenant) {
-      throw new UnauthorizedException('Tenant B2B não encontrado.');
+      throw new NotFoundException('Tenant não encontrado.');
     }
 
-    if (tenant.status === 'SUSPENDED') {
-      throw new ForbiddenException('Acesso suspenso para este Tenant.');
+    // 5. Valida se o Tenant está ativo
+    if (tenant.status !== 'ACTIVE') {
+      throw new BadRequestException('O acesso para este Tenant está suspenso ou inativo.');
     }
 
-    // 3. Injeta o tenantId no contexto da Request para uso global
-    request.tenantId = tenant.id;
+    // Se tudo estiver certo, libera o acesso
     return true;
   }
 }
