@@ -4,9 +4,12 @@ import { CurrentTenant } from '../../common/decorators/current-tenant.decorator'
 import { StudentEngineService } from './student-engine.service';
 import { FilterQuestionsDto } from './dto/filter-questions.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
+import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
+import { RolesGuard } from '@common/guards/roles.guard';
+import { Roles } from '@common/decorators/roles.decorator';
 
 @Controller('student-engine')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, JwtAuthGuard, RolesGuard)   
 export class StudentEngineController {
   constructor(private readonly studentEngineService: StudentEngineService) {}
 
@@ -19,6 +22,7 @@ export class StudentEngineController {
   }
 
   @Post('answer')
+  @Roles('STUDENT', 'ADMIN')
   async submitAnswer(
     @CurrentTenant() tenantId: string,
     @Req() req: any,

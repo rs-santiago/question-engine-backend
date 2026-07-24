@@ -4,6 +4,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma/prisma.module';
 import { AiImporterModule } from './modules/ai-importer/ai-importer.module';
 import { StudentEngineModule } from './modules/student-engine/student-engine.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { StudentEngineModule } from './modules/student-engine/student-engine.mod
     }),
     AiImporterModule,
     StudentEngineModule,
+    WebhooksModule,
+    AuthModule
   ],
 })
 export class AppModule {}
