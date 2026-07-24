@@ -4,6 +4,11 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+
+  (BigInt.prototype as any).toJSON = function () {
+    return Number(this); // Ou `this.toString()` se precisar preservar precisão extrema
+  };
+
   const app = await NestFactory.create(AppModule);
 
   // 1. Configura Prefixo Global das Rotas (ex: http://localhost:3000/api/v1/...)

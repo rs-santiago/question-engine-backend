@@ -6,6 +6,7 @@ import { AiImporterModule } from './modules/ai-importer/ai-importer.module';
 import { StudentEngineModule } from './modules/student-engine/student-engine.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { QuestionsAdminModule } from '@modules/questions-admin/questions-admin.module';
 
 @Module({
   imports: [
@@ -24,7 +25,8 @@ import { AuthModule } from './modules/auth/auth.module';
     AiImporterModule,
     StudentEngineModule,
     WebhooksModule,
-    AuthModule
+    AuthModule,
+    QuestionsAdminModule
   ],
 })
 export class AppModule {}
