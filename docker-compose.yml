@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: postgrespassword
       POSTGRES_DB: question_engine_dev
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -20,7 +20,7 @@ services:
     container_name: question_engine_redis
     restart: always
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
 
