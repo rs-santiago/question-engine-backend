@@ -1,0 +1,30 @@
+# .gitignore
+
+# Dependencies
+/node_modules
+/.pnpm-store
+
+# Production Output
+/dist
+/build
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Database / Storage Local
+/postgres-data
+/redis-data
+
+# IDE / System
+.vscode/
+.idea/
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Testing Coverage
+/coverage

@@ -1,0 +1,155 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  OWNER
+  TEACHER
+  STUDENT
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Tenant {
+  id             String       @id @default(uuid()) @db.Uuid
+  name           String       @db.VarChar(150)
+  subdomain      String       @unique @db.VarChar(63)
+  customDomain   String?      @unique @map("custom_domain") @db.VarChar(255)
+  themeConfig    Json         @default("{}") @map("theme_config")
+  aiTokenBalance Int          @default(500) @map("ai_token_balance")
+  status         TenantStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  users          User[]
+  topics         Topic[]
+  questions      Question[]
+  studentAnswers StudentAnswer[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  email        String   @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         UserRole @default(STUDENT)
+  externalId   String?  @map("external_id") @db.VarChar(100)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  studentAnswers StudentAnswer[]
+
+  // Garante que o mesmo e-mail possa existir em tenants diferentes sem conflito
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model Subject {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(150)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  topics Topic[]
+
+  @@map("subjects")
+}
+
+model Topic {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  subjectId String   @map("subject_id") @db.Uuid
+  name      String   @db.VarChar(150)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@map("topics")
+}
+
+model Question {
+  id          BigInt         @id @default(autoincrement())
+  tenantId    String         @map("tenant_id") @db.Uuid
+  topicId     String         @map("topic_id") @db.Uuid
+  statement   String         @db.Text
+  explanation String?        @db.Text
+  difficulty  Difficulty     @default(MEDIUM)
+  isTrick     Boolean        @default(false) @map("is_trick")
+  source      String?        @db.VarChar(150)
+  status      QuestionStatus @default(DRAFT)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  topic        Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  alternatives Alternative[]
+  answers      StudentAnswer[]
+
+  @@index([tenantId, topicId])
+  @@map("questions")
+}
+
+model Alternative {
+  id           BigInt  @id @default(autoincrement())
+  questionId   BigInt  @map("question_id")
+  letter       String  @db.Char(1)
+  text         String  @db.Text
+  isCorrect    Boolean @default(false) @map("is_correct")
+  justification String? @db.Text
+
+  question       Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  studentAnswers StudentAnswer[]
+
+  @@map("alternatives")
+}
+
+model StudentAnswer {
+  id                  BigInt   @id @default(autoincrement())
+  tenantId            String   @map("tenant_id") @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  questionId          BigInt   @map("question_id")
+  alternativeId       BigInt   @map("alternative_id")
+  isCorrect           Boolean  @map("is_correct")
+  responseTimeSeconds Int?     @map("response_time_seconds")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  alternative Alternative @relation(fields: [alternativeId], references: [id], onDelete: Cascade)
+
+  // Índices compostos de alta volumetria
+  @@index([tenantId, userId, questionId])
+  @@index([tenantId, createdAt])
+  @@map("student_answers")
+}
