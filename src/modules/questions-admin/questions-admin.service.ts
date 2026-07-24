@@ -1,42 +1,63 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateQuestionDto } from './dto/create-question.dto';
+
+export interface CreateQuestionDto {
+  statement: string;
+  source: string;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  isTrick: boolean;
+  explanation?: string;
+  topicId?: string;
+  alternatives: {
+    letter: string;
+    text: string;
+    isCorrect: boolean;
+  }[];
+}
 
 @Injectable()
 export class QuestionsAdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue('ingestion-queue') private readonly ingestionQueue: Queue,
+  ) {}
 
-  async create(tenantId: string, dto: CreateQuestionDto) {
-    let targetTopicId = dto.topicId;
+  /**
+   * Lista todas as questões cadastradas do Tenant atual
+   */
+  async findAllByTenant(tenantId: string) {
+    return this.prisma.question.findMany({
+      where: { tenantId },
+      include: {
+        alternatives: true,
+        topic: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
 
-    // Se o topicId não foi enviado, busca qualquer tópico existente cadastrado no Tenant
-    if (!targetTopicId) {
-      const existingTopic = await this.prisma.topic.findFirst({
-        where: { tenantId },
-      });
+  // Alias para manter compatibilidade com o controller caso ele chame findAll
+  async findAll(tenantId: string) {
+    return this.findAllByTenant(tenantId);
+  }
 
-      if (!existingTopic) {
-        throw new BadRequestException(
-          'Nenhum Tópico/Disciplina cadastrado no Tenant. Forneça um topicId válido.',
-        );
-      }
-
-      targetTopicId = existingTopic.id;
-    }
-
+  /**
+   * Cadastro manual de uma única questão
+   */
+  async createQuestion(tenantId: string, dto: CreateQuestionDto) {
     return this.prisma.question.create({
       data: {
+        tenantId,
         statement: dto.statement,
-        difficulty: dto.difficulty,
-        isTrick: dto.isTrick ?? false,
         source: dto.source,
+        difficulty: dto.difficulty,
+        isTrick: dto.isTrick,
         explanation: dto.explanation,
-        tenant: {
-          connect: { id: tenantId },
-        },
-        topic: {
-          connect: { id: targetTopicId },
-        },
+        topicId: dto.topicId || null,
         alternatives: {
           create: dto.alternatives.map((alt) => ({
             letter: alt.letter,
@@ -47,19 +68,69 @@ export class QuestionsAdminService {
       },
       include: {
         alternatives: true,
-        topic: true,
       },
     });
   }
 
-  async findAll(tenantId: string) {
-    return this.prisma.question.findMany({
-      where: { tenantId },
-      include: {
-        alternatives: true,
-        topic: true,
+  // Alias para manter compatibilidade com o controller caso ele chame create
+  async create(tenantId: string, dto: CreateQuestionDto) {
+    return this.createQuestion(tenantId, dto);
+  }
+
+  /**
+   * Enfileira o upload do PDF para extração e geração de questões via IA (BullMQ)
+   */
+  async enqueuePdfProcessing(
+    tenantId: string,
+    file: Express.Multer.File,
+    sourceName: string,
+    topicId?: string,
+  ) {
+    const job = await this.ingestionQueue.add(
+      'process-pdf',
+      {
+        tenantId,
+        filePath: file.path,
+        fileName: file.originalname,
+        sourceName,
+        topicId: topicId || null,
       },
-      orderBy: { createdAt: 'desc' },
+      {
+        attempts: 5, // Tenta até 5 vezes
+        backoff: {
+          type: 'fixed',
+          delay: 20000, // Aguarda 20 segundos entre cada tentativa
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
+
+    return {
+      message: 'Arquivo enviado para processamento com IA!',
+      jobId: job.id,
+    };
+  }
+
+  /**
+   * Remove uma questão pelo ID (realizando a conversão para número/BigInt)
+   */
+  async deleteQuestion(tenantId: string, questionId: string | number) {
+    const numericId = Number(questionId);
+
+    const question = await this.prisma.question.findFirst({
+      where: { 
+        id: numericId, 
+        tenantId 
+      },
+    });
+
+    if (!question) {
+      throw new NotFoundException('Questão não encontrada ou não pertence ao seu Tenant.');
+    }
+
+    return this.prisma.question.delete({
+      where: { id: numericId },
     });
   }
 }

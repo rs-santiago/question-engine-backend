@@ -1,24 +1,78 @@
-import { Controller, Post, Get, Body, UseGuards, Req } from '@nestjs/common';
-import { QuestionsAdminService } from './questions-admin.service';
-import { CreateQuestionDto } from './dto/create-question.dto';
-import { TenantGuard } from '../../common/guards/tenant.guard';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseInterceptors,
+  UploadedFile,
+  Req,
+  UseGuards,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { QuestionsAdminService, CreateQuestionDto } from './questions-admin.service';
+import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard) // <--- Garante a validação do Token e injeta req.user
 @Controller('admin/questions')
-@UseGuards(TenantGuard, JwtAuthGuard, RolesGuard)
-@Roles('SUPER_ADMIN', 'OWNER', 'TEACHER') // Restrito apenas a Professores e Administradores
 export class QuestionsAdminController {
   constructor(private readonly questionsAdminService: QuestionsAdminService) {}
 
-  @Post()
-  async create(@Req() req: any, @Body() dto: CreateQuestionDto) {
-    return this.questionsAdminService.create(req.user.tenantId, dto);
-  }
-
   @Get()
   async findAll(@Req() req: any) {
-    return this.questionsAdminService.findAll(req.user.tenantId);
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.questionsAdminService.findAllByTenant(tenantId);
+  }
+
+  @Post()
+  async create(@Req() req: any, @Body() dto: CreateQuestionDto) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.questionsAdminService.createQuestion(tenantId, dto);
+  }
+
+  @Post('upload-pdf')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads',
+        filename: (req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+    }),
+  )
+  async uploadPdf(
+    @Req() req: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('sourceName') sourceName: string,
+    @Body('topicId') topicId?: string,
+  ) {
+    // Tenta obter o tenantId do Token JWT ou do Header x-tenant-id enviado pelo frontend
+    const tenantId = req.user?.tenantId || (req.headers['x-tenant-id'] as string);
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Tenant ID não identificado na requisição.');
+    }
+
+    return this.questionsAdminService.enqueuePdfProcessing(
+      tenantId,
+      file,
+      sourceName,
+      topicId,
+    );
+  }
+
+  @Delete(':id')
+  async delete(@Req() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.questionsAdminService.deleteQuestion(tenantId, id);
   }
 }
