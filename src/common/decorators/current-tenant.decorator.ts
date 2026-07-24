@@ -1,4 +1,3 @@
-// src/common/decorators/current-tenant.decorator.ts
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export const CurrentTenant = createParamDecorator(

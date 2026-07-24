@@ -1,10 +1,9 @@
-// src/common/guards/tenant.guard.ts
-import { 
-  Injectable, 
-  CanActivate, 
-  ExecutionContext, 
-  UnauthorizedException, 
-  ForbiddenException 
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -14,15 +13,17 @@ export class TenantGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    
-    // Identifica o tenant pelo Header ou pelo contexto injetado no token JWT
+
+    // 1. Extrai o ID do tenant via Header x-tenant-id ou JWT
     const tenantId = request.headers['x-tenant-id'] || request.user?.tenantId;
 
     if (!tenantId) {
-      throw new UnauthorizedException('Identificador de Tenant não fornecido na requisição.');
+      throw new UnauthorizedException(
+        'Identificador de Tenant B2B não fornecido na requisição.',
+      );
     }
 
-    // Consulta e validação com cache no Redis (versão otimizada)
+    // 2. Consulta o status do Tenant no PostgreSQL
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { id: true, status: true },
@@ -36,7 +37,7 @@ export class TenantGuard implements CanActivate {
       throw new ForbiddenException('Acesso suspenso para este Tenant.');
     }
 
-    // Injeta o tenantId diretamente no objeto da requisição
+    // 3. Injeta o tenantId no contexto da Request para uso global
     request.tenantId = tenant.id;
     return true;
   }
