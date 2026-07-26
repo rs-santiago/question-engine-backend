@@ -22,9 +22,9 @@ describe('StudentEngineService (Unit Test)', () => {
 
   it('deve calcular corretamente a taxa de acertos do aluno', async () => {
     prismaMock.studentAnswer.findMany.mockResolvedValue([
-      { isCorrect: true, timeSpentInSeconds: 30 },
-      { isCorrect: false, timeSpentInSeconds: 40 },
-      { isCorrect: true, timeSpentInSeconds: 50 },
+      { isCorrect: true, responseTimeSeconds: 30 },
+      { isCorrect: false, responseTimeSeconds: 40 },
+      { isCorrect: true, responseTimeSeconds: 50 },
     ]);
 
     const performance = await service.getStudentPerformance('tenant-1', 'user-1');

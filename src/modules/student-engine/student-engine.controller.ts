@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, UseGuards, Req, BadRequestException } from '@nestjs/common';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { StudentEngineService } from './student-engine.service';
@@ -24,12 +24,19 @@ export class StudentEngineController {
   @Post('answer')
   @Roles('STUDENT', 'ADMIN')
   async submitAnswer(
-    @CurrentTenant() tenantId: string,
+    @CurrentTenant() currentTenantId: string,
     @Req() req: any,
     @Body() dto: SubmitAnswerDto,
   ) {
-    // O ID do usuário autenticado vem injetado pelo JwtAuthGuard (ou fallback local para dev)
-    const userId = req.user?.id || 'dev-user-id';
+    // Garante a leitura do tenantId do decorator ou do header HTTP
+    const tenantId = currentTenantId || (req.headers['x-tenant-id'] as string);
+    
+    if (!tenantId) {
+      throw new BadRequestException('Header x-tenant-id não informado.');
+    }
+
+    const userId = req.user?.id || req.user?.sub || 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
     return this.studentEngineService.submitAnswer(tenantId, userId, dto);
   }
 

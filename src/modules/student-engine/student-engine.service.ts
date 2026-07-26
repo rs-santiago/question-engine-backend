@@ -46,45 +46,55 @@ export class StudentEngineService {
 
   // 2. Processa a resposta do aluno e salva o cômputo
   async submitAnswer(tenantId: string, userId: string, dto: SubmitAnswerDto) {
-    const questionIdBigInt = BigInt(dto.questionId);
-    const alternativeIdBigInt = BigInt(dto.alternativeId);
+  if (!tenantId) {
+    throw new BadRequestException('Tenant não informado.');
+  }
 
-    // Busca a questão trazendo as alternativas vinculadas
-    const question = await this.prisma.question.findFirst({
-      where: {
-        id: questionIdBigInt,
-        tenantId,
-      },
-      include: {
-        alternatives: true,
-      },
-    });
+  let questionIdBigInt: bigint;
+  let alternativeIdBigInt: bigint;
 
-    if (!question) {
-      throw new NotFoundException('Questão não encontrada para este Tenant.');
-    }
+  try {
+    questionIdBigInt = BigInt(dto.questionId);
+    alternativeIdBigInt = BigInt(dto.alternativeId);
+  } catch (error) {
+    throw new BadRequestException('IDs de questão ou alternativa em formato inválido.');
+  }
 
-    const selectedAlternative = question.alternatives.find(
-      (alt) => alt.id === alternativeIdBigInt,
-    );
+  // 1. Busca a questão pertencente ao Tenant
+  const question = await this.prisma.question.findFirst({
+    where: { 
+      id: questionIdBigInt, 
+      tenantId 
+    },
+    include: { alternatives: true },
+  });
 
-    if (!selectedAlternative) {
-      throw new BadRequestException('Alternativa selecionada é inválida para esta questão.');
-    }
+  if (!question) {
+    throw new NotFoundException('Questão não encontrada.');
+  }
 
-    const isCorrect = selectedAlternative.isCorrect;
+  // 2. Localiza a alternativa selecionada
+  const selectedAlternative = question.alternatives.find(
+    (alt) => alt.id === alternativeIdBigInt,
+  );
 
-    // Registra a resposta usando os tipos exatos do seu Schema (BigInt e responseTimeSeconds)
-    const answerRecord = await this.prisma.studentAnswer.create({
-      data: {
-        tenantId,
-        userId,
-        questionId: questionIdBigInt,
-        alternativeId: alternativeIdBigInt,
-        isCorrect,
-        responseTimeSeconds: dto.timeSpentInSeconds,
-      },
-    });
+  if (!selectedAlternative) {
+    throw new BadRequestException('Alternativa inválida para esta questão.');
+  }
+
+  const isCorrect = selectedAlternative.isCorrect;
+
+  // 3. Grava no banco com nomes exatos das colunas do schema
+  const answerRecord = await this.prisma.studentAnswer.create({
+    data: {
+      tenantId,
+      userId,
+      questionId: questionIdBigInt,
+      alternativeId: alternativeIdBigInt,
+      isCorrect,
+      responseTimeSeconds: Number(dto.timeSpentInSeconds) || 0,
+    },
+  });
 
     const correctAlternative = question.alternatives.find((a) => a.isCorrect);
 
@@ -105,13 +115,20 @@ export class StudentEngineService {
 
     const totalAnswered = answers.length;
     if (totalAnswered === 0) {
-      return { totalAnswered: 0, accuracyPercentage: 0, averageTimeInSeconds: 0 };
+      return {
+        totalAnswered: 0,
+        correctCount: 0,
+        accuracyPercentage: 0,
+        averageTimeInSeconds: 0,
+      };
     }
 
     const correctCount = answers.filter((a) => a.isCorrect).length;
-    
-    // Mapeia usando a propriedade real do seu schema: responseTimeSeconds
-    const totalTimeSpent = answers.reduce((sum, a) => sum + (a.responseTimeSeconds || 0), 0);
+
+    const totalTimeSpent = answers.reduce(
+      (sum, answer) => sum + (answer.responseTimeSeconds ?? 0),
+      0,
+    );
 
     return {
       totalAnswered,

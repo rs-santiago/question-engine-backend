@@ -1,6 +1,10 @@
 import { IsNotEmpty, IsString, IsInt, Min } from 'class-validator';
 
-export class SubmitAnswerDto {
+export class AutoSaveAnswerDto {
+  @IsNotEmpty()
+  @IsString()
+  simulationId: string;
+
   @IsNotEmpty()
   @IsString()
   questionId: string;

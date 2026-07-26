@@ -20,64 +20,56 @@ export class IngestionProcessor extends WorkerHost {
 
   async process(job: Job<any, any, string>): Promise<any> {
     this.logger.log(`[Job ${job.id}] Iniciando processamento do arquivo: ${job.data.fileName}`);
+    
+    // Progresso 10%: Início
+    await job.updateProgress({ percent: 10, message: 'Extraindo texto do PDF...' });
 
     const { tenantId, filePath, sourceName, topicId } = job.data;
 
     try {
-      // 1. Extração de texto do PDF
+      // 1. Extração de texto
       const rawText = await this.extractTextFromPdf(filePath);
 
-      this.logger.log(
-        `[Job ${job.id}] Texto extraído com sucesso (${rawText.length} caracteres). Enviando para Groq AI...`,
-      );
+      // Progresso 40%: Texto extraído, enviando para a IA
+      await job.updateProgress({ percent: 40, message: 'Elaborando questões com Groq AI...' });
 
-      // 2. Processa via Groq API
+      // 2. Chama a Groq API
       const extractedQuestions = await this.groqService.parseTextToQuestions(
         rawText,
         sourceName || 'Importação PDF',
       );
 
-      this.logger.log(
-        `[Job ${job.id}] ${extractedQuestions.length} questões geradas pela Groq AI. Gravando no PostgreSQL...`,
-      );
+      // Progresso 70%: Resposta recebida, garantindo estrutura de banco
+      await job.updateProgress({ percent: 70, message: 'Estruturando tópicos e acervo...' });
 
-      // 3. Resolve a hierarquia de Subject e Topic para atender o Schema
       let targetTopicId = topicId;
-
       if (!targetTopicId) {
-        // Garante a existência do Subject 'Geral' para este Tenant
         let defaultSubject = await this.prisma.subject.findFirst({
           where: { tenantId, name: 'Geral' },
         });
 
         if (!defaultSubject) {
           defaultSubject = await this.prisma.subject.create({
-            data: {
-              tenantId,
-              name: 'Geral',
-            },
+            data: { tenantId, name: 'Geral' },
           });
         }
 
-        // Garante a existência do Topic 'Geral' vinculado ao Subject 'Geral'
         let defaultTopic = await this.prisma.topic.findFirst({
           where: { tenantId, subjectId: defaultSubject.id, name: 'Geral' },
         });
 
         if (!defaultTopic) {
           defaultTopic = await this.prisma.topic.create({
-            data: {
-              tenantId,
-              subjectId: defaultSubject.id,
-              name: 'Geral',
-            },
+            data: { tenantId, subjectId: defaultSubject.id, name: 'Geral' },
           });
         }
 
         targetTopicId = defaultTopic.id;
       }
 
-      // 4. Salva as questões e alternativas no banco
+      // Progresso 85%: Gravando no PostgreSQL
+      await job.updateProgress({ percent: 85, message: 'Salvando questões no banco de dados...' });
+
       for (const q of extractedQuestions) {
         await this.prisma.question.create({
           data: {
@@ -100,14 +92,13 @@ export class IngestionProcessor extends WorkerHost {
         });
       }
 
-      // 5. Apaga o arquivo do disco apenas após finalizar o processo com sucesso
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
 
-      this.logger.log(
-        `[Job ${job.id}] Finalizado com sucesso! ${extractedQuestions.length} questões salvas no banco.`,
-      );
+      // Progresso 100%: Sucesso
+      await job.updateProgress({ percent: 100, message: 'Concluído com sucesso!' });
+
       return { success: true, count: extractedQuestions.length };
 
     } catch (error) {

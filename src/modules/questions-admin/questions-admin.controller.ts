@@ -75,4 +75,10 @@ export class QuestionsAdminController {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     return this.questionsAdminService.deleteQuestion(tenantId, id);
   }
+
+  // Adicione este GET no QuestionsAdminController:
+  @Get('job-status/:id')
+  async getJobStatus(@Param('id') id: string) {
+    return this.questionsAdminService.getJobStatus(id);
+  }
 }

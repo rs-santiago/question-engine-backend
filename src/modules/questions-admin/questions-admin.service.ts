@@ -77,9 +77,7 @@ export class QuestionsAdminService {
     return this.createQuestion(tenantId, dto);
   }
 
-  /**
-   * Enfileira o upload do PDF para extração e geração de questões via IA (BullMQ)
-   */
+  // Altere o método enqueuePdfProcessing:
   async enqueuePdfProcessing(
     tenantId: string,
     file: Express.Multer.File,
@@ -96,12 +94,16 @@ export class QuestionsAdminService {
         topicId: topicId || null,
       },
       {
-        attempts: 5, // Tenta até 5 vezes
+        attempts: 3,
         backoff: {
-          type: 'fixed',
-          delay: 20000, // Aguarda 20 segundos entre cada tentativa
+          type: 'exponential',
+          delay: 10000,
         },
-        removeOnComplete: true,
+        // 🚀 MANTÉM OS ÚLTIMOS JOBS CONCLUÍDOS NO REDIS PARA O POLLING LER O RESULTADO
+        removeOnComplete: {
+          age: 3600, // Mantém por 1 hora
+          count: 100, // Mantém até 100 jobs concluídos
+        },
         removeOnFail: false,
       },
     );
@@ -132,5 +134,31 @@ export class QuestionsAdminService {
     return this.prisma.question.delete({
       where: { id: numericId },
     });
+  }
+
+  // Adicione este método dentro da classe QuestionsAdminService:
+  async getJobStatus(jobId: string) {
+    const job = await this.ingestionQueue.getJob(jobId);
+
+    if (!job) {
+      // Se o job não está mais no Redis, assumimos que já foi concluído e limpo
+      return {
+        id: jobId,
+        state: 'completed',
+        progress: { percent: 100, message: 'Concluído!' },
+      };
+    }
+
+    const state = await job.getState();
+    const progress = job.progress;
+    const failedReason = job.failedReason;
+
+    return {
+      id: job.id,
+      state,
+      progress,
+      failedReason,
+      result: job.returnvalue,
+    };
   }
 }

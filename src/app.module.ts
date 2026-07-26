@@ -7,6 +7,7 @@ import { StudentEngineModule } from './modules/student-engine/student-engine.mod
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { QuestionsAdminModule } from '@modules/questions-admin/questions-admin.module';
+import { SimulationsModule } from '@modules/simulations/simulations.module';
 
 @Module({
   imports: [
@@ -26,7 +27,8 @@ import { QuestionsAdminModule } from '@modules/questions-admin/questions-admin.m
     StudentEngineModule,
     WebhooksModule,
     AuthModule,
-    QuestionsAdminModule
+    QuestionsAdminModule,
+    SimulationsModule
   ],
 })
 export class AppModule {}
